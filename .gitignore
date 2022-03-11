@@ -3,6 +3,7 @@ env/
 tmp.html
 .secret
 *.log
+*.json
 
 MANIFEST
 build
