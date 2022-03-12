@@ -1,0 +1,18 @@
+2. handle if files_info.json is empty
+
+
+######### TODO -> check this functions
+# isDownloaded()
+# waitToFinishDownload()
+##############
+
+
+
+
+
+############## NOT TESTED YET ####################
+        # file_option_buttons.pop(idx)
+        # file_names.pop(idx)
+        # file_types_and_dates.pop(j)
+        # file_types_and_dates.pop(k)
+############## NOT TESTED YET ####################

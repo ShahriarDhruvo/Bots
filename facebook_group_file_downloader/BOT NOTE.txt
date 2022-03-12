@@ -1,4 +1,0 @@
-1. check the file date before isDownloaded
-2. separate into files_info.json & bot.log
-3. handle if files_info.json is empty
-4. clearing the array (NOT TESTED YET -> section)
