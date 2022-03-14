@@ -208,29 +208,35 @@ def isDownloaded(fileName, uploadDate, downloaded_files, tracked_files):
     5. File present in the download directory but there is no log for that file in files_info.json
     -> this shouldn't happen in any situation
 
-    6. All files has been checked once then this shouldn't be checked anymore because there can be 
+    6. All files has been checked once then this shouldn't be checked anymore because there can be
     multiple files with the same name(in the website) and they all should be downloaded
     remove the found file so that the file with same name can be downloaded later on
+
+
+    Return Value
+    ------------
+    First -> Should it download the requested file
+    Second -> If the file should download then should it update it into the tracker file
 
     """
 
     if not downloaded_files or not tracked_files:
-        return False
+        return False, True
 
     downloadedFileIndex = binarySearch(fileName, downloaded_files)
     trackedFileIndex = binarySearch((uploadDate, fileName), tracked_files, True)
 
     # if not trackedFileIndex: # because index can be 0
     if trackedFileIndex == -1:
-        return False
+        return False, True
 
-    if downloadedFileIndex == -1:
-        return False
+    if trackedFileIndex and downloadedFileIndex == -1:
+        return True, False
 
     tracked_files.pop(trackedFileIndex)
     downloaded_files.pop(downloadedFileIndex)
 
-    return True
+    return True, True
 
 
 def downloadFile(driver, wait, cssSelector, files_count):
@@ -327,6 +333,8 @@ def waitToFinishDownload(directory, nfiles=None, timeout=network_failure_timeout
             "\nYour connection is too slow or you are not connected! Try again later. Closing the connection..."
         )
     else:
-        updateLog("\nSuccessfully downloaded. Continuing after {}s... 🥳".format(time_elapsed))
+        updateLog(
+            "\nSuccessfully downloaded. Continuing after {}s... 🥳".format(time_elapsed)
+        )
 
     return time_elapsed
