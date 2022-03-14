@@ -125,7 +125,14 @@ def getExistingFilesInfo():
 
     # files that are registered in files_info.json
     tracked_files = sorted(
-        [[info["uploaded_date"], info["name"]] for info in files_info]
+        [
+            [
+                info["post_permalink"] if "post_permalink" in info else False,
+                info["uploaded_date"],
+                info["name"],
+            ]
+            for info in files_info
+        ]
     )
 
     return downloaded_files, tracked_files
@@ -162,10 +169,27 @@ def binarySearch(item, itemList, multipleCheck=False):
         mid = math.floor(left + (right - left) / 2)
 
         if multipleCheck:
-            # Checking both file uploaded date and file name
-            # if each == itemList[mid][idx] for idx, each in enumerate(item):
-            if compareString(itemList[mid][0], item[0]) and compareString(
-                itemList[mid][1], item[1]
+            """
+            If permalink exist for the file then check:
+                permalink of the post
+                uploaded date
+                file name
+            If not then check:
+                uploaded date
+                file name
+
+            """
+            if (
+                itemList[mid][0]
+                and (
+                    itemList[mid][0] == item[0]
+                    and compareString(itemList[mid][1], item[1])
+                    and compareString(itemList[mid][2], item[2])
+                )
+                or (
+                    compareString(itemList[mid][1], item[1])
+                    and compareString(itemList[mid][2], item[2])
+                )
             ):
                 return mid
             elif itemList[mid][0] > item[0]:
@@ -183,7 +207,7 @@ def binarySearch(item, itemList, multipleCheck=False):
     return -1
 
 
-def isDownloaded(fileName, uploadDate, downloaded_files, tracked_files):
+def isDownloaded(fileName, uploadDate, post_permalink, downloaded_files, tracked_files):
     """
     Check If the requested file has already been downloaded or not
 
@@ -224,7 +248,9 @@ def isDownloaded(fileName, uploadDate, downloaded_files, tracked_files):
         return False, True
 
     downloadedFileIndex = binarySearch(fileName, downloaded_files)
-    trackedFileIndex = binarySearch((uploadDate, fileName), tracked_files, True)
+    trackedFileIndex = binarySearch(
+        (post_permalink, uploadDate, fileName), tracked_files, True
+    )
 
     # if not trackedFileIndex: # because index can be 0
     if trackedFileIndex == -1:
