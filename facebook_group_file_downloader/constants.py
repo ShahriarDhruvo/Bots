@@ -1,5 +1,6 @@
 encoding = "utf-8"
 target_file_type = "pdf"
+normalization_form = "NFC"
 log_file_location = "bot.log"
 
 # This file keeps track of every downloaded file

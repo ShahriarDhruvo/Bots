@@ -1,5 +1,4 @@
 import os
-import math
 import time
 import glob
 import json
@@ -14,11 +13,12 @@ from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 
-from constantsAndVariables import (
+from constants import (
     secrets,
     encoding,
     target_file_type,
     log_file_location,
+    normalization_form,
     explicit_wait_time,
     tracker_file_location,
     network_failure_timeout,
@@ -97,20 +97,6 @@ def initializeWebpage(driver, url):
     # driver.execute_script("arguments[0].click();", sortButtons[1])
 
 
-def compareString(s1, s2):
-    # To avoid comparison between different unicode char
-    s1 = unicodedata.normalize("NFC", s1)
-    s2 = unicodedata.normalize("NFC", s2)
-
-    # Removing whitespace in the string before comparing
-    # because when file saves in the machine it seems to add whitepsaces after '-'
-    # remove = string.punctuation + string.whitespace
-    remove = string.whitespace
-    mapping = {ord(c): None for c in remove}
-
-    return s1.translate(mapping) == s2.translate(mapping)
-
-
 def getExistingFilesInfo():
     with open(tracker_file_location, "r", encoding=encoding) as f:
         try:
@@ -120,16 +106,33 @@ def getExistingFilesInfo():
 
     # already downloaded file's name in download directory
     downloaded_files = sorted(
-        [os.path.basename(f) for f in glob.glob(secrets[2] + "/*." + target_file_type)]
+        [
+            unicodedata.normalize(normalization_form, os.path.basename(f))
+            for f in glob.glob(secrets[2] + "/*." + target_file_type)
+        ]
     )
 
-    # files that are registered in files_info.json
+    """
+    Files that are registered in files_info.json
+    Order needs to be maintained for sorting and searching
+
+    Order
+    -----
+    0 uploaded date
+    1 permalink of the post
+    2 file name
+
+    """
     tracked_files = sorted(
         [
             [
-                info["post_permalink"] if "post_permalink" in info else False,
-                info["uploaded_date"],
-                info["name"],
+                unicodedata.normalize(normalization_form, info["uploaded_date"]),
+                (
+                    unicodedata.normalize(normalization_form, info["post_permalink"])
+                    if "post_permalink" in info
+                    else ""
+                ),
+                unicodedata.normalize(normalization_form, info["name"]),
             ]
             for info in files_info
         ]
@@ -161,33 +164,49 @@ def updateLog(text):
         f.write(text + "\n")
 
 
+def compareString(s1, s2):
+    # string will be normalized before coming here
+    # s1 = unicodedata.normalize(normalization_form, s1)
+    # s2 = unicodedata.normalize(normalization_form, s2)
+
+    # Removing whitespace in the string before comparing
+    # because when file saves in the machine it seems to add whitepsaces after '-'
+    # remove = string.punctuation + string.whitespace
+    remove = string.whitespace
+    mapping = {ord(c): None for c in remove}
+
+    return s1.translate(mapping) == s2.translate(mapping)
+
+
 def binarySearch(item, itemList, multipleCheck=False):
     left = 0
     right = len(itemList) - 1
 
     while left <= right:
-        mid = math.floor(left + (right - left) / 2)
+        mid = left + (right - left) // 2
 
         if multipleCheck:
             """
+            Sorted By: uploaded date
+
             If permalink exist for the file then check:
-                permalink of the post
-                uploaded date
-                file name
+                0 uploaded date
+                1 permalink of the post
+                2 file name
             If not then check:
-                uploaded date
-                file name
+                0 uploaded date
+                2 file name
 
             """
             if (
-                itemList[mid][0]
+                itemList[mid][1]
                 and (
-                    itemList[mid][0] == item[0]
-                    and compareString(itemList[mid][1], item[1])
+                    compareString(itemList[mid][0], item[0])
+                    and itemList[mid][1] == item[1]
                     and compareString(itemList[mid][2], item[2])
                 )
                 or (
-                    compareString(itemList[mid][1], item[1])
+                    compareString(itemList[mid][0], item[0])
                     and compareString(itemList[mid][2], item[2])
                 )
             ):
@@ -207,7 +226,9 @@ def binarySearch(item, itemList, multipleCheck=False):
     return -1
 
 
-def isDownloaded(fileName, uploadDate, post_permalink, downloaded_files, tracked_files):
+def checkDownloadStatus(
+    upload_date, post_permalink, file_name, downloaded_files, tracked_files
+):
     """
     Check If the requested file has already been downloaded or not
 
@@ -239,25 +260,54 @@ def isDownloaded(fileName, uploadDate, post_permalink, downloaded_files, tracked
 
     Return Value
     ------------
-    First -> Should it download the requested file
-    Second -> If the file should download then should it update it into the tracker file
+    First -> Should it download the requested file or not
+    Second -> Update traker file or not
 
     """
 
     if not downloaded_files or not tracked_files:
         return False, True
 
-    downloadedFileIndex = binarySearch(fileName, downloaded_files)
+    """
+    Normalizing all data that are needed to be compared
+    Normalizing to avoid comparison between different unicode char thus unexpected results
+
+    Caution
+    -------
+    We need to make SURE to NORMALIZE all data before passing it to the 'binarySearch()'
+    otherwise when comparing '>, <, ==' it will give unexpected results
+
+    'downloaded_files' and 'tracked_files' should have all of their datas normalized when created
+
+    """
+    file_name = unicodedata.normalize(normalization_form, file_name)
+    upload_date = unicodedata.normalize(normalization_form, upload_date)
+    post_permalink = unicodedata.normalize(normalization_form, post_permalink)
+
+    """
+    item
+    ----
+    0 uploaded date
+    1 permalink of the post
+    2 file name
+
+    """
     trackedFileIndex = binarySearch(
-        (post_permalink, uploadDate, fileName), tracked_files, True
+        (upload_date, post_permalink, file_name), tracked_files, True
     )
 
     # if not trackedFileIndex: # because index can be 0
     if trackedFileIndex == -1:
         return False, True
 
-    if trackedFileIndex and downloadedFileIndex == -1:
-        return True, False
+    downloadedFileIndex = binarySearch(file_name, downloaded_files)
+    
+    # Turned off for duplication
+    # if trackedFileIndex and downloadedFileIndex == -1:
+    #     updateLog(
+    #         "\n*** Info does exist in the tracker-file but file doesn't exist in the download directory ***"
+    #     )
+    #     return False, False
 
     tracked_files.pop(trackedFileIndex)
     downloaded_files.pop(downloadedFileIndex)
