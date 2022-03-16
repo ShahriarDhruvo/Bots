@@ -12,28 +12,31 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-
 from constants import (
     secrets,
+    timeout,
     encoding,
     target_file_type,
     log_file_location,
     normalization_form,
     explicit_wait_time,
     tracker_file_location,
-    network_failure_timeout,
 )
 
-#########################################################
-# sleep is important because if we scrape too fast then #
-# facebook will detect the bot and block this account   #
-#########################################################
+
 def waitNSeconds(sleep_time=1):
+    """
+    WARNING
+    -------
+    Sleep is important because if we run it too fast then
+    facebook will detect the Bot and block this account
+
+    """
     time.sleep(sleep_time)
 
 
 def initializeWebDriver():
-    # Ignore all alerts from the webpage
+    # Keep the focus on the main window: Ignores all alerts from the webpage
     options = webdriver.ChromeOptions()
     prefs = {"profile.default_content_setting_values.notifications": 2}
     options.add_experimental_option("prefs", prefs)
@@ -45,18 +48,16 @@ def initializeWebDriver():
     elif platform.system() == "Linux":
         driver = webdriver.Chrome("chromedriver", options=options)
 
-    wait = WebDriverWait(
-        driver, explicit_wait_time
-    )  # to wait until the element is ready -> Explicit Waits
+    # Explicit Waits: Wait until the element is ready
+    wait = WebDriverWait(driver, explicit_wait_time)
 
     return driver, wait
 
 
 def login(driver, wait):
-    # open the webpage
     driver.get("http://www.facebook.com")
 
-    # target credentials
+    # Target credential's input field
     username = wait.until(
         EC.element_to_be_clickable((By.CSS_SELECTOR, "input[name='email']"))
     )
@@ -64,90 +65,97 @@ def login(driver, wait):
         EC.element_to_be_clickable((By.CSS_SELECTOR, "input[name='pass']"))
     )
 
-    # enter username and password
+    # Enter username and password
     username.clear()
     username.send_keys(secrets[0])
     password.clear()
     password.send_keys(secrets[1])
 
-    # target thesrc login button and click it
+    # Target submit button
     SubmitButton = WebDriverWait(driver, 2).until(
         EC.element_to_be_clickable((By.CSS_SELECTOR, "button[type='submit']"))
     )
 
     SubmitButton.click()
 
-    """ After this you should be logged in! -> if you have 2fa then you have to authorize it manually and then run the remaining cells manually """
+    """
+    You should be logged in by now!
+    
+    Note
+    ----
+    if you have 2fa on for this account then you have to authorize it and then run the remaining code manually
+    
+    """
 
 
 def initializeWebpage(driver, url):
     waitNSeconds(2)
     driver.get(url)
 
-    ###########################################################
-    # NOT NEEDED -> as it doesn't sort by file type reliably 😑
-    ###########################################################
-    # sortButtons_xpath = "//div[@class='l9j0dhe7 du4w35lb j83agx80 pfnyh3mw taijpn5t bp9cbjyn owycx6da btwxx1t3 kt9q3ron ak7q8e6j isp2s0ed ri5dt5u2 rt8b4zig n8ej3o3l agehan2d sk4xxmp2 rq0escxv d1544ag0 tw6a2znq tdjehn4e tv7at329']" # find 3 per-scroll
+    """
+    As you scroll through the webpage the content will no longer appear sorted
+    so there is no merit in sorting the files by name/date/type or whatever
+    
+    If you still want to try this then you can use the code below
 
-    # sortButtons = wait.until(
-    #     EC.presence_of_all_elements_located((By.XPATH, sortButtons_xpath))
-    # )
+    Code
+    ----
+    sortButtons_xpath = "//div[@class='l9j0dhe7 du4w35lb j83agx80 pfnyh3mw taijpn5t bp9cbjyn owycx6da btwxx1t3 kt9q3ron ak7q8e6j isp2s0ed ri5dt5u2 rt8b4zig n8ej3o3l agehan2d sk4xxmp2 rq0escxv d1544ag0 tw6a2znq tdjehn4e tv7at329']" # find 3 per-scroll
 
-    # # sort by file_type (PDF at the top in my case)
-    # driver.execute_script("arguments[0].click();", sortButtons[1])
+    sortButtons = wait.until(
+        EC.presence_of_all_elements_located((By.XPATH, sortButtons_xpath))
+    )
+
+    # [1]: Sort by file_type (PDF at the top in my case)
+    driver.execute_script("arguments[0].click();", sortButtons[1])
+
+    """
+
+
+def normalizeData(data):
+    return unicodedata.normalize(normalization_form, data)
 
 
 def getExistingFilesInfo():
     with open(tracker_file_location, "r", encoding=encoding) as f:
+        registered_file_list = []
+
         try:
-            files_info = json.load(f)["files"]
+            infos = json.load(f)["files"]
+
+            for info in infos:
+                registered_file_list.append(
+                    {
+                        "post_id": normalizeData(info["post_id"]),
+                        "name": normalizeData(info["name"]),
+                        "uploaded_date": normalizeData(info["uploaded_date"]),
+                    }
+                )
+
         except JSONDecodeError:
-            files_info = []
+            pass
 
-    # already downloaded file's name in download directory
-    downloaded_files = sorted(
-        [
-            unicodedata.normalize(normalization_form, os.path.basename(f))
-            for f in glob.glob(secrets[2] + "/*." + target_file_type)
-        ]
+    # Already downloaded file's name in the download directory
+    downloaded_file_list = sorted(
+        normalizeData(os.path.basename(f))
+        for f in glob.glob(secrets[2] + "/*." + target_file_type)
     )
 
-    """
-    Files that are registered in files_info.json
-    Order needs to be maintained for sorting and searching
-
-    Order
-    -----
-    0 uploaded date
-    1 permalink of the post
-    2 file name
-
-    """
-    tracked_files = sorted(
-        [
-            [
-                unicodedata.normalize(normalization_form, info["uploaded_date"]),
-                (
-                    unicodedata.normalize(normalization_form, info["post_permalink"])
-                    if "post_permalink" in info
-                    else ""
-                ),
-                unicodedata.normalize(normalization_form, info["name"]),
-            ]
-            for info in files_info
-        ]
-    )
-
-    return downloaded_files, tracked_files
+    return downloaded_file_list, registered_file_list
 
 
 def appendFilesInfo(res):
+    """
+    We can make this function more efficient by not copyting the whole file again and again everytime
+    but just adding those info at the end of the file (with less prettier mode and doing minimization)
+
+    """
     with open(tracker_file_location, "r+", encoding=encoding) as f:
         try:
             data = json.load(f)
             data["files"].append(res)
 
-            # Sets file's current position at offset.
+            # Sets file's current position at the begining.
             f.seek(0)
             json.dump(data, f, indent=4, ensure_ascii=False)
 
@@ -164,13 +172,18 @@ def updateLog(text):
         f.write(text + "\n")
 
 
-def compareString(s1, s2):
-    # string will be normalized before coming here
-    # s1 = unicodedata.normalize(normalization_form, s1)
-    # s2 = unicodedata.normalize(normalization_form, s2)
+def compareData(s1, s2):
+    """
+    Note
+    ----
+    1. You donot need to normalize the string here because it should be normalized before passing to this function
+    or this will generate unexpected results when strings are compared(>, <) in the binarySearch()
+    and it will help with the performance too as you don't need to normalize in every check
 
-    # Removing whitespace in the string before comparing
-    # because when file saves in the machine it seems to add whitepsaces after '-'
+    2. Removing whitespace in the string before comparing because when file saves in the machine
+    it seems to add whitepsaces after '-' and there can also be some other things like this
+
+    """
     # remove = string.punctuation + string.whitespace
     remove = string.whitespace
     mapping = {ord(c): None for c in remove}
@@ -178,46 +191,39 @@ def compareString(s1, s2):
     return s1.translate(mapping) == s2.translate(mapping)
 
 
-def binarySearch(item, itemList, multipleCheck=False):
-    left = 0
-    right = len(itemList) - 1
+def searchFile(match_item, itemList, multipleCheck=False):
+    if multipleCheck:
+        """
+        You can improve this search by replacing it with a special binary search
+        in that case you can search for both upper bound and the lower bound of
+        the match_item and then perform a linear search into those bound ->
+        https://stackoverflow.com/questions/12144802/finding-multiple-entries-with-binary-search
 
-    while left <= right:
-        mid = left + (right - left) // 2
+        You can do the sorting of the dictionary like this ->
+        https://note.nkmk.me/en/python-dict-list-sort/#:~:text=To%20sort%20a%20list%20of,the%20result%20of%20that%20function.
 
-        if multipleCheck:
-            """
-            Sorted By: uploaded date
-
-            If permalink exist for the file then check:
-                0 uploaded date
-                1 permalink of the post
-                2 file name
-            If not then check:
-                0 uploaded date
-                2 file name
-
-            """
+        """
+        # Linear Search
+        for idx, item in enumerate(itemList):
             if (
-                itemList[mid][1]
-                and (
-                    compareString(itemList[mid][0], item[0])
-                    and itemList[mid][1] == item[1]
-                    and compareString(itemList[mid][2], item[2])
-                )
-                or (
-                    compareString(itemList[mid][0], item[0])
-                    and compareString(itemList[mid][2], item[2])
-                )
+                compareData(match_item["post_id"], item["post_id"])
+                and compareData(match_item["name"], item["name"])
+                and compareData(match_item["uploaded_date"], item["uploaded_date"])
             ):
+                return idx
+
+    else:
+        # Binary Search (It works fine here)
+        left = 0
+        right = len(itemList) - 1
+
+        while left <= right:
+            mid = left + (right - left) // 2
+
+            if compareData(itemList[mid], item):
                 return mid
-            elif itemList[mid][0] > item[0]:
-                right = mid - 1
-            else:
-                left = mid + 1
-        else:
-            if compareString(itemList[mid], item):
-                return mid
+
+            # For these kind of comparison we need to normalize the data beforehand
             elif itemList[mid] > item:
                 right = mid - 1
             else:
@@ -227,7 +233,7 @@ def binarySearch(item, itemList, multipleCheck=False):
 
 
 def checkDownloadStatus(
-    upload_date, post_permalink, file_name, downloaded_files, tracked_files
+    _post_id, _name, _date, downloaded_file_list, registered_file_list
 ):
     """
     Check If the requested file has already been downloaded or not
@@ -238,19 +244,19 @@ def checkDownloadStatus(
     attempt to download these files in this case all files should be downloaded
     -> return False
 
-    2. If the file is not present in the tracker file(files_info.json) then the file that
+    2. If the file is not present in the tracker file(registered_files.json) then the file that
     has been requested to download didn't get to download previously
     -> return False
 
     3. If the file is not present in the download directory but has already been
-    added to tracker file(files_info.json) then it was not downloaded properly
+    added to tracker file(registered_files.json) then it was not downloaded properly
     -> return False
 
-    4. If the file exist both in tracker file(files_info.json) & in the download directory
+    4. If the file exist both in tracker file(registered_files.json) & in the download directory
     then the file has been downloaded
     -> return True
 
-    5. File present in the download directory but there is no log for that file in files_info.json
+    5. File present in the download directory but there is no log for that file in registered_files.json
     -> this shouldn't happen in any situation
 
     6. All files has been checked once then this shouldn't be checked anymore because there can be
@@ -261,68 +267,43 @@ def checkDownloadStatus(
     Return Value
     ------------
     First -> Should it download the requested file or not
-    Second -> Update traker file or not
+    Second -> Should it update traker file or not
 
     """
 
-    if not downloaded_files or not tracked_files:
+    if not registered_file_list or not downloaded_file_list:
         return False, True
 
-    """
-    Normalizing all data that are needed to be compared
-    Normalizing to avoid comparison between different unicode char thus unexpected results
-
-    Caution
-    -------
-    We need to make SURE to NORMALIZE all data before passing it to the 'binarySearch()'
-    otherwise when comparing '>, <, ==' it will give unexpected results
-
-    'downloaded_files' and 'tracked_files' should have all of their datas normalized when created
-
-    """
-    file_name = unicodedata.normalize(normalization_form, file_name)
-    upload_date = unicodedata.normalize(normalization_form, upload_date)
-    post_permalink = unicodedata.normalize(normalization_form, post_permalink)
-
-    """
-    item
-    ----
-    0 uploaded date
-    1 permalink of the post
-    2 file name
-
-    """
-    trackedFileIndex = binarySearch(
-        (upload_date, post_permalink, file_name), tracked_files, True
+    registered_file_index = searchFile(
+        {"post_id": _post_id, "name": _name, "uploaded_date": _date},
+        registered_file_list,
+        True,
     )
 
-    # if not trackedFileIndex: # because index can be 0
-    if trackedFileIndex == -1:
+    # if not registered_file_index: # because index can be 0
+    if registered_file_index == -1:
         return False, True
 
-    downloadedFileIndex = binarySearch(file_name, downloaded_files)
-    
-    # Turned off for duplication
-    # if trackedFileIndex and downloadedFileIndex == -1:
+    downloaded_file_index = searchFile(_name, downloaded_file_list)
+
+    # Turned off for duplicate file download
+    # if registered_file_index and downloaded_file_index == -1:
     #     updateLog(
     #         "\n*** Info does exist in the tracker-file but file doesn't exist in the download directory ***"
     #     )
     #     return False, False
 
-    tracked_files.pop(trackedFileIndex)
-    downloaded_files.pop(downloadedFileIndex)
+    registered_file_list.pop(registered_file_index)
+    downloaded_file_list.pop(downloaded_file_index)
 
     return True, True
 
 
-def downloadFile(driver, wait, cssSelector, files_count):
-    download_button = wait.until(
-        EC.presence_of_element_located((By.CSS_SELECTOR, cssSelector))
-    )
+def downloadFile(driver, wait, xpath, files_count):
+    download_button = wait.until(EC.presence_of_element_located((By.XPATH, xpath)))
 
-    driver.execute_script(
-        "arguments[0].target='_self';", download_button
-    )  # to prevent it from opening into a new tab
+    # Prevent it from opening into a new tab
+    driver.execute_script("arguments[0].target='_self';", download_button)
 
     waitNSeconds(0.5)
 
@@ -331,27 +312,29 @@ def downloadFile(driver, wait, cssSelector, files_count):
     return files_count + 1  # Keeping track of the downloaded files
 
 
-###################################################################
-# scroll down to load more files                                  #
-# wait 60s before determining that there is no more files to load #
-###################################################################
-def loadMoreFiles(driver, files_to_load, identifier, timeout=60, n_scroll=1):
-    for _ in range(n_scroll):  # do this operation(scroll to load) for n times
+def loadMoreFiles(driver, files_to_load, identifier, timeout=timeout, n_scroll=1):
+    """
+    Scroll down to load more files
+    wait 'timeout=10 minutes' before determining that there is no more files to load
+
+    """
+    for _ in range(n_scroll):  # do this operation (scroll to load) n times
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
 
         time_elapsed = 0
         current_len = len(files_to_load[0])
 
-        ########################################################################
-        # If the first one is loaded then all others will surely get loaded    #
-        # so you don't have to check the whole length of 'files_to_load' array #
-        # but if you want you can do something like this ->                    #
-        # current_len = sum(len(i) for i in files_to_load)                     #
-        ########################################################################
+        """
+        If the first one is loaded then all others will surely get loaded
+        so you don't have to check the whole length of 'files_to_load' array
+        but if you want you can do something like this ->
+        current_len = sum(len(i) for i in files_to_load)
+        
+        """
         while (current_len >= len(files_to_load[0])) and time_elapsed < timeout:
             waitNSeconds(1)
 
-            # iterate through all the files that are needed to be loaded
+            # Iterate through all the files that are needed to be loaded
             for idx, _ in enumerate(files_to_load):
                 files_to_load[idx].extend(
                     [
@@ -366,23 +349,21 @@ def loadMoreFiles(driver, files_to_load, identifier, timeout=60, n_scroll=1):
     return files_to_load
 
 
-def waitToFinishDownload(directory, nfiles=None, timeout=network_failure_timeout):
+def waitToFinishDownload(directory, nfiles=None, timeout=timeout):
     """
-    Wait for downloads to finish with a specified timeout.
-
     Args
     ----
-    directory : str
+    directory: str
         The path to the folder where the files will be downloaded.
-    timeout : int
+    timeout: int
         How many time_elapsed until it stops waiting.
-    nfiles : int, defaults to None
+    nfiles: int, defaults to None
         If provided, also wait for the expected number of files.
 
     """
 
-    time_elapsed = 0
     dl_wait = True
+    time_elapsed = 0
 
     while dl_wait and time_elapsed < timeout:
         waitNSeconds(0.5)  # check every 0.5s
@@ -390,13 +371,12 @@ def waitToFinishDownload(directory, nfiles=None, timeout=network_failure_timeout
         dl_wait = False
         files = os.listdir(directory)
 
-        # if nfiles and len(files) != nfiles:
-        #     # if nfiles and len(files) < nfiles:
-        #     dl_wait = True
+        if nfiles and len(files) != nfiles:
+            dl_wait = True
 
+        # As partial downloaded files will be of ".crdownload" extension for chromium based browsers
         if not dl_wait:
             for fname in files:
-                # as partial downloaded files will be of ".crdownload" extension for chromium based browsers
                 if fname.endswith(".crdownload"):
                     dl_wait = True
                     break
@@ -414,3 +394,55 @@ def waitToFinishDownload(directory, nfiles=None, timeout=network_failure_timeout
         )
 
     return time_elapsed
+
+
+################ DEPRICATED ###########################
+# def binarySearch(item, itemList, multipleCheck=False):
+#     left = 0
+#     right = len(itemList) - 1
+
+#     while left <= right:
+#         mid = left + (right - left) // 2
+
+#         if multipleCheck:
+#             """
+#             Sorted By: uploaded date
+
+#             If permalink exist for the file then check:
+#                 0 uploaded date
+#                 1 permalink of the post
+#                 2 file name
+#             If not then check:
+#                 0 uploaded date
+#                 2 file name
+
+#             """
+#             if itemList[mid][1]:
+#                 if (
+#                     compareString(itemList[mid][0], item[0])
+#                     and itemList[mid][1] == item[1]
+#                     and compareString(itemList[mid][2], item[2])
+#                 ):
+#                     return mid
+#                 elif itemList[mid][0] > item[0]:
+#                     right = mid - 1
+#                 else:
+#                     left = mid + 1
+#             else:
+#                 if compareString(itemList[mid][0], item[0]) and compareString(
+#                     itemList[mid][2], item[2]
+#                 ):
+#                     return mid
+#                 elif itemList[mid][0] > item[0]:
+#                     right = mid - 1
+#                 else:
+#                     left = mid + 1
+#         else:
+#             if compareString(itemList[mid], item):
+#                 return mid
+#             elif itemList[mid] > item:
+#                 right = mid - 1
+#             else:
+#                 left = mid + 1
+
+#     return -1

@@ -4,10 +4,10 @@ normalization_form = "NFC"
 log_file_location = "bot.log"
 
 # This file keeps track of every downloaded file
-tracker_file_location = "files_info.json"
+tracker_file_location = "registered_file.json"
 
+timeout = 600
 explicit_wait_time = 10
-network_failure_timeout = 600
 
 # For obvious reason 😉
 with open(".secret", encoding=encoding) as f:
