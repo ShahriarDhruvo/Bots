@@ -13,6 +13,7 @@ from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 from constants import (
+    sort_by,
     secrets,
     timeout,
     encoding,
@@ -135,6 +136,8 @@ def getExistingFilesInfo():
         except JSONDecodeError:
             pass
 
+    registered_file_list = sorted(registered_file_list, key=lambda x: x[sort_by])
+
     # Already downloaded file's name in the download directory
     downloaded_file_list = sorted(
         normalizeData(os.path.basename(f))
@@ -191,40 +194,68 @@ def compareData(s1, s2):
     return s1.translate(mapping) == s2.translate(mapping)
 
 
+def lowerBound(match_item, itemList, key):
+    left = 0
+    right = len(itemList) - 1
+
+    while left <= right:
+        mid = left + (right - left) // 2
+
+        if itemList[mid][key] >= match_item[key]:
+            right = mid - 1
+        else:
+            left = mid + 1
+
+    return left
+
+
+def upperBound(match_item, itemList, key):
+    left = 0
+    right = len(itemList) - 1
+
+    while left <= right:
+        mid = left + (right - left) // 2
+
+        if itemList[mid][key] > match_item[key]:
+            right = mid - 1
+        else:
+            left = mid + 1
+
+    return left
+
+
 def searchFile(match_item, itemList, multipleCheck=False):
     if multipleCheck:
-        """
-        You can improve this search by replacing it with a special binary search
-        in that case you can search for both upper bound and the lower bound of
-        the match_item and then perform a linear search into those bound ->
-        https://stackoverflow.com/questions/12144802/finding-multiple-entries-with-binary-search
+        # Finding left and right most position of the matched item by binary search
+        left = lowerBound(match_item, itemList, sort_by)
+        right = upperBound(match_item, itemList, sort_by)
 
-        You can do the sorting of the dictionary like this ->
-        https://note.nkmk.me/en/python-dict-list-sort/#:~:text=To%20sort%20a%20list%20of,the%20result%20of%20that%20function.
+        if left == right:
+            return -1
 
-        """
-        # Linear Search
-        for idx, item in enumerate(itemList):
-            if (
-                compareData(match_item["post_id"], item["post_id"])
-                and compareData(match_item["name"], item["name"])
-                and compareData(match_item["uploaded_date"], item["uploaded_date"])
-            ):
+        # Linear Search between the left and right most position of the matched item
+        for idx in range(left, right):
+            c1 = match_item["post_id"] == itemList[idx]["post_id"]
+            c2 = compareData(match_item["name"], itemList[idx]["name"])
+            c3 = compareData(
+                match_item["uploaded_date"], itemList[idx]["uploaded_date"]
+            )
+            if c1 and c2 and c3:
                 return idx
 
     else:
-        # Binary Search (It works fine here)
+        # Binary Search
         left = 0
         right = len(itemList) - 1
 
         while left <= right:
             mid = left + (right - left) // 2
 
-            if compareData(itemList[mid], item):
+            if compareData(itemList[mid], match_item):
                 return mid
 
             # For these kind of comparison we need to normalize the data beforehand
-            elif itemList[mid] > item:
+            elif itemList[mid] > match_item:
                 right = mid - 1
             else:
                 left = mid + 1

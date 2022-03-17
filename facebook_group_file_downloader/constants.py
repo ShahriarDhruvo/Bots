@@ -1,4 +1,5 @@
 encoding = "utf-8"
+sort_by = "post_id"
 target_file_type = "pdf"
 normalization_form = "NFC"
 log_file_location = "bot.log"
