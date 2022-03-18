@@ -1,14 +1,13 @@
+timeout = 600
 encoding = "utf-8"
 sort_by = "post_id"
+explicit_wait_time = 10
 target_file_type = "pdf"
 normalization_form = "NFC"
 log_file_location = "bot.log"
 
 # This file keeps track of every downloaded file
-tracker_file_location = "registered_file.json"
-
-timeout = 600
-explicit_wait_time = 10
+tracker_file_location = "registered_files.json"
 
 # For obvious reason 😉
 with open(".secret", encoding=encoding) as f:

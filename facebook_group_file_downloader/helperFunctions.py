@@ -50,19 +50,19 @@ def initializeWebDriver():
         driver = webdriver.Chrome("chromedriver", options=options)
 
     # Explicit Waits: Wait until the element is ready
-    wait = WebDriverWait(driver, explicit_wait_time)
+    web_driver_wait = WebDriverWait(driver, explicit_wait_time)
 
-    return driver, wait
+    return driver, web_driver_wait
 
 
-def login(driver, wait):
+def login(driver, web_driver_wait):
     driver.get("http://www.facebook.com")
 
     # Target credential's input field
-    username = wait.until(
+    username = web_driver_wait.until(
         EC.element_to_be_clickable((By.CSS_SELECTOR, "input[name='email']"))
     )
-    password = wait.until(
+    password = web_driver_wait.until(
         EC.element_to_be_clickable((By.CSS_SELECTOR, "input[name='pass']"))
     )
 
@@ -103,7 +103,7 @@ def initializeWebpage(driver, url):
     ----
     sortButtons_xpath = "//div[@class='l9j0dhe7 du4w35lb j83agx80 pfnyh3mw taijpn5t bp9cbjyn owycx6da btwxx1t3 kt9q3ron ak7q8e6j isp2s0ed ri5dt5u2 rt8b4zig n8ej3o3l agehan2d sk4xxmp2 rq0escxv d1544ag0 tw6a2znq tdjehn4e tv7at329']" # find 3 per-scroll
 
-    sortButtons = wait.until(
+    sortButtons = web_driver_wait.until(
         EC.presence_of_all_elements_located((By.XPATH, sortButtons_xpath))
     )
 
@@ -317,21 +317,31 @@ def checkDownloadStatus(
 
     downloaded_file_index = searchFile(_name, downloaded_file_list)
 
-    # Turned off for duplicate file download
-    # if registered_file_index and downloaded_file_index == -1:
-    #     updateLog(
-    #         "\n*** Info does exist in the tracker-file but file doesn't exist in the download directory ***"
-    #     )
-    #     return False, False
+    if registered_file_index and downloaded_file_index == -1:
+        updateLog(
+            "\n*** Info does exist in the tracker-file but file doesn't exist in the download directory ***"
+        )
+        return False, False
 
     registered_file_list.pop(registered_file_index)
-    downloaded_file_list.pop(downloaded_file_index)
+
+    """
+    If the file is found in the tracker file and want to check if it really exist in the download directory in this case
+    you cannot delete the data from the list because if 2 files have same name then if I delete the first one the second one
+    with '(1)' at the end won't get check and get downloaded. And yes in this way we miss the duplicate uploaded files but 
+    here we have to make some choices. At least in this way the Bot downloads non-duplicate files which didn't get downloaded
+    previously.
+    
+    """
+    # downloaded_file_list.pop(downloaded_file_index)
 
     return True, True
 
 
-def downloadFile(driver, wait, xpath, files_count):
-    download_button = wait.until(EC.presence_of_element_located((By.XPATH, xpath)))
+def downloadFile(driver, web_driver_wait, xpath, files_count):
+    download_button = web_driver_wait.until(
+        EC.presence_of_element_located((By.XPATH, xpath))
+    )
 
     # Prevent it from opening into a new tab
     driver.execute_script("arguments[0].target='_self';", download_button)
@@ -349,7 +359,8 @@ def loadMoreFiles(driver, files_to_load, identifier, timeout=timeout, n_scroll=1
     wait 'timeout=10 minutes' before determining that there is no more files to load
 
     """
-    for _ in range(n_scroll):  # do this operation (scroll to load) n times
+    # Do this operation(scroll to load) for n times
+    for _ in range(n_scroll):
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
 
         time_elapsed = 0
@@ -362,20 +373,38 @@ def loadMoreFiles(driver, files_to_load, identifier, timeout=timeout, n_scroll=1
         current_len = sum(len(i) for i in files_to_load)
         
         """
-        while (current_len >= len(files_to_load[0])) and time_elapsed < timeout:
-            waitNSeconds(1)
+        while time_elapsed < timeout:
+            # Computation here gets much more expensive as more and more data loads
+            # so it is not viable to do this check every second
+            start_time = time.time()
+            waitNSeconds(5)
+
+            first_data = driver.find_elements(By.XPATH, identifier[0])
 
             # Iterate through all the files that are needed to be loaded
-            for idx, _ in enumerate(files_to_load):
-                files_to_load[idx].extend(
+            if current_len < len(first_data):
+                files_to_load[0].extend(
                     [
                         element
-                        for element in driver.find_elements(By.XPATH, identifier[idx])
-                        if element not in files_to_load[idx]
+                        for element in first_data
+                        if element not in files_to_load[0]
                     ]
                 )
 
-            time_elapsed += 1
+                for idx in range(1, len(files_to_load)):
+                    files_to_load[idx].extend(
+                        [
+                            element
+                            for element in driver.find_elements(
+                                By.XPATH, identifier[idx]
+                            )
+                            if element not in files_to_load[idx]
+                        ]
+                    )
+
+                break
+
+            time_elapsed += time.time() - start_time
 
     return files_to_load
 
@@ -397,6 +426,7 @@ def waitToFinishDownload(directory, nfiles=None, timeout=timeout):
     time_elapsed = 0
 
     while dl_wait and time_elapsed < timeout:
+        start_time = time.time()
         waitNSeconds(0.5)  # check every 0.5s
 
         dl_wait = False
@@ -412,7 +442,7 @@ def waitToFinishDownload(directory, nfiles=None, timeout=timeout):
                     dl_wait = True
                     break
 
-        time_elapsed += 0.5
+        time_elapsed += time.time() - start_time
 
     if time_elapsed >= timeout:
         time_elapsed = -1
@@ -425,55 +455,3 @@ def waitToFinishDownload(directory, nfiles=None, timeout=timeout):
         )
 
     return time_elapsed
-
-
-################ DEPRICATED ###########################
-# def binarySearch(item, itemList, multipleCheck=False):
-#     left = 0
-#     right = len(itemList) - 1
-
-#     while left <= right:
-#         mid = left + (right - left) // 2
-
-#         if multipleCheck:
-#             """
-#             Sorted By: uploaded date
-
-#             If permalink exist for the file then check:
-#                 0 uploaded date
-#                 1 permalink of the post
-#                 2 file name
-#             If not then check:
-#                 0 uploaded date
-#                 2 file name
-
-#             """
-#             if itemList[mid][1]:
-#                 if (
-#                     compareString(itemList[mid][0], item[0])
-#                     and itemList[mid][1] == item[1]
-#                     and compareString(itemList[mid][2], item[2])
-#                 ):
-#                     return mid
-#                 elif itemList[mid][0] > item[0]:
-#                     right = mid - 1
-#                 else:
-#                     left = mid + 1
-#             else:
-#                 if compareString(itemList[mid][0], item[0]) and compareString(
-#                     itemList[mid][2], item[2]
-#                 ):
-#                     return mid
-#                 elif itemList[mid][0] > item[0]:
-#                     right = mid - 1
-#                 else:
-#                     left = mid + 1
-#         else:
-#             if compareString(itemList[mid], item):
-#                 return mid
-#             elif itemList[mid] > item:
-#                 right = mid - 1
-#             else:
-#                 left = mid + 1
-
-#     return -1
