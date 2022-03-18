@@ -22,6 +22,7 @@ from constants import (
     normalization_form,
     explicit_wait_time,
     tracker_file_location,
+    partially_downloaded_file_ext,
 )
 
 
@@ -29,8 +30,7 @@ def waitNSeconds(sleep_time=1):
     """
     WARNING
     -------
-    Sleep is important because if we run it too fast then
-    facebook will detect the Bot and block this account
+    Sleep is essential because if we run it too quickly, Facebook will detect the Bot and block this account.
 
     """
     time.sleep(sleep_time)
@@ -79,15 +79,6 @@ def login(driver, web_driver_wait):
 
     SubmitButton.click()
 
-    """
-    You should be logged in by now!
-    
-    Note
-    ----
-    if you have 2fa on for this account then you have to authorize it and then run the remaining code manually
-    
-    """
-
 
 def initializeWebpage(driver, url):
     waitNSeconds(2)
@@ -133,10 +124,12 @@ def getExistingFilesInfo():
                     }
                 )
 
+            registered_file_list = sorted(
+                registered_file_list, key=lambda x: x[sort_by]
+            )
+
         except JSONDecodeError:
             pass
-
-    registered_file_list = sorted(registered_file_list, key=lambda x: x[sort_by])
 
     # Already downloaded file's name in the download directory
     downloaded_file_list = sorted(
@@ -149,8 +142,8 @@ def getExistingFilesInfo():
 
 def appendFilesInfo(res):
     """
-    We can make this function more efficient by not copyting the whole file again and again everytime
-    but just adding those info at the end of the file (with less prettier mode and doing minimization)
+    We can make this function more efficient by not copying the entire file every time,
+    but rather just adding the information at the end of the file (with less prettier mode and doing minimization)
 
     """
     with open(tracker_file_location, "r+", encoding=encoding) as f:
@@ -158,19 +151,19 @@ def appendFilesInfo(res):
             data = json.load(f)
             data["files"].append(res)
 
-            # Sets file's current position at the begining.
+            # Sets pointer's current position at the begining of the file
             f.seek(0)
             json.dump(data, f, indent=4, ensure_ascii=False)
 
             data.clear()
         except JSONDecodeError:
-            # If the file is empty initially
+            # As initially the file is empty
             data = {"files": [res]}
             json.dump(data, f, indent=4, ensure_ascii=False)
 
 
 def updateLog(text):
-    print(text)  # Unnecessary but why not :3
+    print(text)  # Unnecessary but why not 😉
     with open(log_file_location, "a", encoding=encoding) as f:
         f.write(text + "\n")
 
@@ -179,12 +172,12 @@ def compareData(s1, s2):
     """
     Note
     ----
-    1. You donot need to normalize the string here because it should be normalized before passing to this function
-    or this will generate unexpected results when strings are compared(>, <) in the binarySearch()
-    and it will help with the performance too as you don't need to normalize in every check
+    1. You do not need to normalize the string here because it should be normalized before passing to this function or else it will produce
+    unexpected results when strings are compared(>, <) in the searchFile() and it will also help with performance because you will not need to
+    normalize in every check.
 
-    2. Removing whitespace in the string before comparing because when file saves in the machine
-    it seems to add whitepsaces after '-' and there can also be some other things like this
+    2. Removing whitespace from the string before comparing because when the file is saved on the machine
+    It appears to add whitespaces after '-', and there may be other things like this.
 
     """
     # remove = string.punctuation + string.whitespace
@@ -269,39 +262,47 @@ def checkDownloadStatus(
     """
     Check If the requested file has already been downloaded or not
 
-    Scenarios
-    ---------
-    1. If either tracker file or download directory is empty then there was no previous
-    attempt to download these files in this case all files should be downloaded
-    -> return False
-
-    2. If the file is not present in the tracker file(registered_files.json) then the file that
-    has been requested to download didn't get to download previously
-    -> return False
-
-    3. If the file is not present in the download directory but has already been
-    added to tracker file(registered_files.json) then it was not downloaded properly
-    -> return False
-
-    4. If the file exist both in tracker file(registered_files.json) & in the download directory
-    then the file has been downloaded
-    -> return True
-
-    5. File present in the download directory but there is no log for that file in registered_files.json
-    -> this shouldn't happen in any situation
-
-    6. All files has been checked once then this shouldn't be checked anymore because there can be
-    multiple files with the same name(in the website) and they all should be downloaded
-    remove the found file so that the file with same name can be downloaded later on
-
-
     Return Value
     ------------
     First -> Should it download the requested file or not
-    Second -> Should it update traker file or not
+    Second -> Should it update information in the traker file or not
+
+
+    Scenarios
+    ---------
+    1. If either tracker file or download directory is empty then there was no previous attempt to download these files in this case all files
+    should be downloaded
+    -> return False, True
+
+    2. If the file is not present in the tracker file (registered files.json), it means that the file that was requested to download was not
+    downloaded previously.
+    -> return False, True
+
+    3. If the file is not in the download directory but has already been added to the tracker file (registered files.json), it was not downloaded
+    properly previously.
+    -> return False, False
+
+    4. If the file exist both in tracker file (registered_files.json) & in the download directory then the file has been downloaded succesfully
+    -> return True, False
+
+    5. File is present in the download directory but there is no log for that file in registered_files.json
+    -> return True, True (Didn't handle because you can't tell if the downloaded file is the requested one just by looking at the file name)
+
+    Note
+    ----
+    1. Once all files have been checked, this should no longer be checked because there may be multiple files with the same name (on the website)
+    that should all be downloaded. Removing the discovered file so that a file with the same name can be downloaded later
+
+    2. If the file is found in the tracker file and you want to check if it really exists in the download directory, you cannot delete the data from
+    this list because if two files have the same name, deleting the first one prevents the second one with '(1)' at the end from being checked and
+    downloaded. And, yes, we miss the duplicate uploaded files this way, but we have to make some choices here. At the very least, the Bot downloads
+    non-duplicate files that were not previously downloaded. So you can't do this ->
+
+    downloaded_file_list.pop(downloaded_file_index)
 
     """
 
+    # Scenarios: 1
     if not registered_file_list or not downloaded_file_list:
         return False, True
 
@@ -311,31 +312,24 @@ def checkDownloadStatus(
         True,
     )
 
+    # Scenarios: 2
     # if not registered_file_index: # because index can be 0
     if registered_file_index == -1:
         return False, True
 
     downloaded_file_index = searchFile(_name, downloaded_file_list)
 
+    # Scenarios: 3
     if registered_file_index and downloaded_file_index == -1:
         updateLog(
-            "\n*** Info does exist in the tracker-file but file doesn't exist in the download directory ***"
+            "\n*** The information is in the tracker-file, but the file is not in the download directory. Downloading... ***"
         )
         return False, False
 
     registered_file_list.pop(registered_file_index)
 
-    """
-    If the file is found in the tracker file and want to check if it really exist in the download directory in this case
-    you cannot delete the data from the list because if 2 files have same name then if I delete the first one the second one
-    with '(1)' at the end won't get check and get downloaded. And yes in this way we miss the duplicate uploaded files but 
-    here we have to make some choices. At least in this way the Bot downloads non-duplicate files which didn't get downloaded
-    previously.
-    
-    """
-    # downloaded_file_list.pop(downloaded_file_index)
-
-    return True, True
+    # Scenarios: 4
+    return True, False
 
 
 def downloadFile(driver, web_driver_wait, xpath, files_count):
@@ -356,10 +350,9 @@ def downloadFile(driver, web_driver_wait, xpath, files_count):
 def loadMoreFiles(driver, files_to_load, identifier, timeout=timeout, n_scroll=1):
     """
     Scroll down to load more files
-    wait 'timeout=10 minutes' before determining that there is no more files to load
+    -> do this operation(scroll to load) for n times
 
     """
-    # Do this operation(scroll to load) for n times
     for _ in range(n_scroll):
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
 
@@ -367,21 +360,24 @@ def loadMoreFiles(driver, files_to_load, identifier, timeout=timeout, n_scroll=1
         current_len = len(files_to_load[0])
 
         """
-        If the first one is loaded then all others will surely get loaded
-        so you don't have to check the whole length of 'files_to_load' array
-        but if you want you can do something like this ->
-        current_len = sum(len(i) for i in files_to_load)
+        1. If the first one is loaded then all others will surely get loaded so you don't have to check the whole length of 'files_to_load' array but
+           if you want you can do something like this ->
+            
+           current_len = sum(len(i) for i in files_to_load)
+
+        
+        2. Wait 'timeout=30 minutes' before determining that there is no more files to load
+
+        3. Computation here gets much more expensive as more and more data loads so it is not viable to do this check every second hence 5s interval
         
         """
         while time_elapsed < timeout:
-            # Computation here gets much more expensive as more and more data loads
-            # so it is not viable to do this check every second
             start_time = time.time()
             waitNSeconds(5)
 
+            # By doing this we don't need to check if every single data is loaded or not everytime hence saving computational power
             first_data = driver.find_elements(By.XPATH, identifier[0])
 
-            # Iterate through all the files that are needed to be loaded
             if current_len < len(first_data):
                 files_to_load[0].extend(
                     [
@@ -435,10 +431,10 @@ def waitToFinishDownload(directory, nfiles=None, timeout=timeout):
         if nfiles and len(files) != nfiles:
             dl_wait = True
 
-        # As partial downloaded files will be of ".crdownload" extension for chromium based browsers
+        # Checking for any partially donwloaded file
         if not dl_wait:
             for fname in files:
-                if fname.endswith(".crdownload"):
+                if fname.endswith(partially_downloaded_file_ext):
                     dl_wait = True
                     break
 
@@ -447,11 +443,13 @@ def waitToFinishDownload(directory, nfiles=None, timeout=timeout):
     if time_elapsed >= timeout:
         time_elapsed = -1
         updateLog(
-            "\nYour connection is too slow or you are not connected! Try again later. Closing the connection..."
+            "\nYour connection is either too slow or you are not connected at all! Please try again later. I'm going to disconnect..."
         )
     else:
         updateLog(
-            "\nSuccessfully downloaded. Continuing after {}s... 🥳".format(time_elapsed)
+            "\nThe download was successful. Continuing after {}s... 🥳".format(
+                time_elapsed
+            )
         )
 
     return time_elapsed
