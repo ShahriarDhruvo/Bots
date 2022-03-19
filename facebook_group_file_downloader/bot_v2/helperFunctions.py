@@ -19,6 +19,7 @@ from constants import (
     encoding,
     target_file_type,
     log_file_location,
+    download_directory,
     normalization_form,
     explicit_wait_time,
     tracker_file_location,
@@ -37,14 +38,25 @@ def waitNSeconds(sleep_time=1):
 
 
 def initializeWebDriver():
-    # Keep the focus on the main window: Ignores all alerts from the webpage
+    """
+    Options
+    -------
+    1. Set the browser's default download location
+    2. Ignores all alerts from the webpage
+    3. Set automatically download multiple files option to True
+
+    """
     options = webdriver.ChromeOptions()
-    prefs = {"profile.default_content_setting_values.notifications": 2}
+    prefs = {
+        "download.default_directory": download_directory,
+        "profile.default_content_setting_values.notifications": 2,
+        "profile.default_content_setting_values.automatic_downloads": 1,
+    }
     options.add_experimental_option("prefs", prefs)
 
     # Tested on Windows & Linux
     if platform.system() == "Windows":
-        service = Service(secrets[3])
+        service = Service(secrets[2])
         driver = webdriver.Chrome(service=service, options=options)
     elif platform.system() == "Linux":
         driver = webdriver.Chrome("chromedriver", options=options)
@@ -118,7 +130,7 @@ def getExistingFilesInfo():
             for info in infos:
                 registered_file_list.append(
                     {
-                        "post_id": normalizeData(info["post_id"]),
+                        "post_id": info["post_id"],
                         "name": normalizeData(info["name"]),
                         "uploaded_date": normalizeData(info["uploaded_date"]),
                     }
@@ -134,7 +146,7 @@ def getExistingFilesInfo():
     # Already downloaded file's name in the download directory
     downloaded_file_list = sorted(
         normalizeData(os.path.basename(f))
-        for f in glob.glob(secrets[2] + "/*." + target_file_type)
+        for f in glob.glob(download_directory + "*." + target_file_type)
     )
 
     return downloaded_file_list, registered_file_list
@@ -319,12 +331,12 @@ def checkDownloadStatus(
 
     downloaded_file_index = searchFile(_name, downloaded_file_list)
 
-    # Scenarios: 3
-    if registered_file_index and downloaded_file_index == -1:
-        updateLog(
-            "\n*** The information is in the tracker-file, but the file is not in the download directory. Downloading... ***"
-        )
-        return False, False
+    # Scenarios: 3 (Turned of because it downloads already downloaded files!)
+    # if registered_file_index and downloaded_file_index == -1:
+    #     updateLog(
+    #         "\n*** The information is in the tracker-file, but the file is not in the download directory. Downloading... ***"
+    #     )
+    #     return False, False
 
     registered_file_list.pop(registered_file_index)
 
@@ -337,10 +349,13 @@ def downloadFile(driver, web_driver_wait, xpath, files_count):
         EC.presence_of_element_located((By.XPATH, xpath))
     )
 
-    # Prevent it from opening into a new tab
-    driver.execute_script("arguments[0].target='_self';", download_button)
+    """
+    We can't afford to have the page of a loaded file redirected, so it is here  in order to be extra cautious
 
-    waitNSeconds(0.5)
+    """
+    driver.execute_script("arguments[0].target='_blank';", download_button)
+
+    waitNSeconds(1)
 
     driver.execute_script("arguments[0].click();", download_button)
 
@@ -447,9 +462,7 @@ def waitToFinishDownload(directory, nfiles=None, timeout=timeout):
         )
     else:
         updateLog(
-            "\nThe download was successful. Continuing after {}s... 🥳".format(
-                time_elapsed
-            )
+            "\nSuccessfully downloaded. Continuing after {}s... 🥳".format(time_elapsed)
         )
 
     return time_elapsed
