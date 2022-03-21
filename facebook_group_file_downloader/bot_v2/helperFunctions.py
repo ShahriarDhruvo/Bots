@@ -354,7 +354,7 @@ def loadMoreFiles(driver, files_to_load, identifier, timeout=timeout, n_scroll=1
         3. Computation here gets much more expensive as more and more data loads so it is not viable to do this check every second hence 5s interval
         
         """
-        while time_elapsed < timeout:
+        while time_elapsed <= timeout:
             start_time = time.time()
             waitNSeconds(5)
 
@@ -404,7 +404,7 @@ def waitToFinishDownload(directory, nfiles=None, timeout=timeout):
     dl_wait = True
     time_elapsed = 0
 
-    while dl_wait and time_elapsed < timeout:
+    while dl_wait and time_elapsed <= timeout:
         start_time = time.time()
         waitNSeconds(0.5)  # check every 0.5s
 
