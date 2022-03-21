@@ -13,7 +13,6 @@ from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 from constants import (
-    sort_by,
     secrets,
     timeout,
     encoding,
@@ -23,6 +22,7 @@ from constants import (
     normalization_form,
     explicit_wait_time,
     tracker_file_location,
+    should_check_local_files,
     partially_downloaded_file_ext,
 )
 
@@ -128,26 +128,33 @@ def getExistingFilesInfo():
             infos = json.load(f)["files"]
 
             for info in infos:
+                """
+                Normalizing here because the data is now coming from a UTF-8 encoded file
+
+                """
                 registered_file_list.append(
-                    {
-                        "post_id": info["post_id"],
-                        "name": normalizeData(info["name"]),
-                        "uploaded_date": normalizeData(info["uploaded_date"]),
-                    }
+                    transformData(
+                        [
+                            info["post_id"],
+                            normalizeData(info["name"]),
+                            normalizeData(info["uploaded_date"]),
+                        ]
+                    )
                 )
 
-            registered_file_list = sorted(
-                registered_file_list, key=lambda x: x[sort_by]
-            )
+            registered_file_list.sort()  # To perform binarySearch later
 
         except JSONDecodeError:
             pass
 
     # Already downloaded file's name in the download directory
-    downloaded_file_list = sorted(
-        normalizeData(os.path.basename(f))
-        for f in glob.glob(download_directory + "*." + target_file_type)
-    )
+    if should_check_local_files:
+        downloaded_file_list = sorted(
+            transformData([os.path.basename(f)])  # Must pass a list as a parameter
+            for f in glob.glob(download_directory + "*." + target_file_type)
+        )
+    else:
+        downloaded_file_list = []
 
     return downloaded_file_list, registered_file_list
 
@@ -180,90 +187,49 @@ def updateLog(text):
         f.write(text + "\n")
 
 
-def compareData(s1, s2):
+def transformData(dataList):  # The parameter has to be a LIST
+    res = ""
+
+    for data in dataList:
+        res += str(data)
+
     """
     Note
     ----
-    1. You do not need to normalize the string here because it should be normalized before passing to this function or else it will produce
-    unexpected results when strings are compared(>, <) in the searchFile() and it will also help with performance because you will not need to
-    normalize in every check.
-
-    2. Removing whitespace from the string before comparing because when the file is saved on the machine
+    1. Removing whitespace from the string before comparing because when the file is saved on the machine
     It appears to add whitespaces after '-', and there may be other things like this.
+
+    2. Normalizing here because this function have to accept normalized/scattered data
 
     """
     # remove = string.punctuation + string.whitespace
     remove = string.whitespace
     mapping = {ord(c): None for c in remove}
 
-    return s1.translate(mapping) == s2.translate(mapping)
+    res = res.translate(mapping)
+
+    return normalizeData(res)
 
 
-def lowerBound(match_item, itemList, key):
+def binarySearch(match_item, itemList):
+    """
+    match_item and itemList's data should always be on their normalized form
+
+    """
     left = 0
     right = len(itemList) - 1
 
     while left <= right:
         mid = left + (right - left) // 2
 
-        if itemList[mid][key] >= match_item[key]:
+        if itemList[mid] == match_item:
+            return mid
+
+        # For these kind of comparison we need to normalize the data beforehand
+        elif itemList[mid] > match_item:
             right = mid - 1
         else:
             left = mid + 1
-
-    return left
-
-
-def upperBound(match_item, itemList, key):
-    left = 0
-    right = len(itemList) - 1
-
-    while left <= right:
-        mid = left + (right - left) // 2
-
-        if itemList[mid][key] > match_item[key]:
-            right = mid - 1
-        else:
-            left = mid + 1
-
-    return left
-
-
-def searchFile(match_item, itemList, multipleCheck=False):
-    if multipleCheck:
-        # Finding left and right most position of the matched item by binary search
-        left = lowerBound(match_item, itemList, sort_by)
-        right = upperBound(match_item, itemList, sort_by)
-
-        if left == right:
-            return -1
-
-        # Linear Search between the left and right most position of the matched item
-        for idx in range(left, right):
-            c1 = match_item["post_id"] == itemList[idx]["post_id"]
-            c2 = compareData(match_item["name"], itemList[idx]["name"])
-            c3 = compareData(
-                match_item["uploaded_date"], itemList[idx]["uploaded_date"]
-            )
-            if c1 and c2 and c3:
-                return idx
-
-    else:
-        # Binary Search
-        left = 0
-        right = len(itemList) - 1
-
-        while left <= right:
-            mid = left + (right - left) // 2
-
-            if compareData(itemList[mid], match_item):
-                return mid
-
-            # For these kind of comparison we need to normalize the data beforehand
-            elif itemList[mid] > match_item:
-                right = mid - 1
-            else:
-                left = mid + 1
 
     return -1
 
@@ -318,10 +284,9 @@ def checkDownloadStatus(
     if not registered_file_list or not downloaded_file_list:
         return False, True
 
-    registered_file_index = searchFile(
-        {"post_id": _post_id, "name": _name, "uploaded_date": _date},
+    registered_file_index = binarySearch(
+        transformData([_post_id, _name, _date]),
         registered_file_list,
-        True,
     )
 
     # Scenarios: 2
@@ -329,14 +294,17 @@ def checkDownloadStatus(
     if registered_file_index == -1:
         return False, True
 
-    downloaded_file_index = searchFile(_name, downloaded_file_list)
+    # Scenarios: 3
+    if should_check_local_files:
+        downloaded_file_index = binarySearch(
+            transformData([_name]), downloaded_file_list
+        )
 
-    # Scenarios: 3 (Turned of because it downloads already downloaded files!)
-    # if registered_file_index and downloaded_file_index == -1:
-    #     updateLog(
-    #         "\n*** The information is in the tracker-file, but the file is not in the download directory. Downloading... ***"
-    #     )
-    #     return False, False
+        if registered_file_index and downloaded_file_index == -1:
+            updateLog(
+                "\n*** The information is in the tracker-file, but the file is not in the download directory. Downloading... ***"
+            )
+            return False, False
 
     registered_file_list.pop(registered_file_index)
 

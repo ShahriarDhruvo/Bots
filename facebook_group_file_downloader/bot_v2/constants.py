@@ -1,11 +1,14 @@
 timeout = 1800  # 30 minutes
 encoding = "utf-8"
-sort_by = "post_id"
 explicit_wait_time = 10
 target_file_type = "pdf"
 normalization_form = "NFC"
 log_file_location = "bot.log"
 download_directory = "D:\\Download\\Molat-PDF-Files\\"
+
+# Turned of because it downloads already downloaded files!
+should_check_local_files = False
+
 
 """
 For chromium based browsers this is '.crdownload'
