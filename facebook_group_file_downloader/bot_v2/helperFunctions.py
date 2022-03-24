@@ -13,18 +13,56 @@ from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 from constants import (
-    secrets,
-    timeout,
-    encoding,
-    target_file_type,
-    log_file_location,
-    download_directory,
-    normalization_form,
-    explicit_wait_time,
-    tracker_file_location,
-    should_check_local_files,
-    partially_downloaded_file_ext,
+    SECRETS,
+    TIMEOUT,
+    ENCODING,
+    TARGET_FILE_TYPE,
+    LOG_FILE_LOCATION,
+    DOWNLOAD_DIRECTORY,
+    NORMALIZATION_FORM,
+    EXPLICIT_WAIT_TIME,
+    TRACKER_FILE_LOCATION,
+    SHOULD_CHECK_LOCAL_FILES,
+    PARTIALLY_DOWNLOADED_FILE_EXT,
 )
+
+
+ordinal = lambda n: "%d%s" % (
+    n,
+    "tsnrhtdd"[(n // 10 % 10 != 1) * (n % 10 < 4) * n % 10 :: 4],
+)
+
+# Scroll down N times to load (N * 15) files
+def scrollNTimes(driver, scroll_count=1, n_scroll=35, timeout=TIMEOUT):
+    time_elapsed = 0
+
+    for _ in range(n_scroll):
+        end_time = 0
+        new_height = 0
+        start_time = time.time()
+        last_height = driver.execute_script("return document.body.scrollHeight")
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+
+        while (last_height >= new_height) and (end_time <= timeout):
+            waitNSeconds(3)  # Otherwise your account will surely get blocked
+            new_height = driver.execute_script("return document.body.scrollHeight")
+
+            end_time = time.time() - start_time
+
+        time_elapsed += end_time
+        updateLog(
+            "{} scroll took {}s".format(ordinal(scroll_count), round(end_time, 2))
+        )
+
+        scroll_count += 1
+
+        if end_time > timeout:
+            updateLog("\nTIMEOUT: May be it's the end of the list!")
+            break
+
+    updateLog("\nTotal loading time {}s".format(round(time_elapsed, 2)))
+
+    return scroll_count
 
 
 def waitNSeconds(sleep_time=1):
@@ -48,7 +86,7 @@ def initializeWebDriver():
     """
     options = webdriver.ChromeOptions()
     prefs = {
-        "download.default_directory": download_directory,
+        "download.default_directory": DOWNLOAD_DIRECTORY,
         "profile.default_content_setting_values.notifications": 2,
         "profile.default_content_setting_values.automatic_downloads": 1,
     }
@@ -56,13 +94,13 @@ def initializeWebDriver():
 
     # Tested on Windows & Linux
     if platform.system() == "Windows":
-        service = Service(secrets[2])
+        service = Service(SECRETS[2])
         driver = webdriver.Chrome(service=service, options=options)
     elif platform.system() == "Linux":
         driver = webdriver.Chrome("chromedriver", options=options)
 
     # Explicit Waits: Wait until the element is ready
-    web_driver_wait = WebDriverWait(driver, explicit_wait_time)
+    web_driver_wait = WebDriverWait(driver, EXPLICIT_WAIT_TIME)
 
     return driver, web_driver_wait
 
@@ -80,9 +118,9 @@ def login(driver, web_driver_wait):
 
     # Enter username and password
     username.clear()
-    username.send_keys(secrets[0])
+    username.send_keys(SECRETS[0])
     password.clear()
-    password.send_keys(secrets[1])
+    password.send_keys(SECRETS[1])
 
     # Target submit button
     SubmitButton = WebDriverWait(driver, 2).until(
@@ -117,11 +155,11 @@ def initializeWebpage(driver, url):
 
 
 def normalizeData(data):
-    return unicodedata.normalize(normalization_form, data)
+    return unicodedata.normalize(NORMALIZATION_FORM, data)
 
 
 def getExistingFilesInfo():
-    with open(tracker_file_location, "r", encoding=encoding) as f:
+    with open(TRACKER_FILE_LOCATION, "r", encoding=ENCODING) as f:
         registered_file_list = []
 
         try:
@@ -148,10 +186,10 @@ def getExistingFilesInfo():
             pass
 
     # Already downloaded file's name in the download directory
-    if should_check_local_files:
+    if SHOULD_CHECK_LOCAL_FILES:
         downloaded_file_list = sorted(
             transformData([os.path.basename(f)])  # Must pass a list as a parameter
-            for f in glob.glob(download_directory + "*." + target_file_type)
+            for f in glob.glob(DOWNLOAD_DIRECTORY + "*." + TARGET_FILE_TYPE)
         )
     else:
         downloaded_file_list = []
@@ -165,7 +203,7 @@ def appendFilesInfo(res):
     but rather just adding the information at the end of the file (with less prettier mode and doing minimization)
 
     """
-    with open(tracker_file_location, "r+", encoding=encoding) as f:
+    with open(TRACKER_FILE_LOCATION, "r+", encoding=ENCODING) as f:
         try:
             data = json.load(f)
             data["files"].append(res)
@@ -183,7 +221,7 @@ def appendFilesInfo(res):
 
 def updateLog(text):
     print(text)  # Unnecessary but why not 😉
-    with open(log_file_location, "a", encoding=encoding) as f:
+    with open(LOG_FILE_LOCATION, "a", encoding=ENCODING) as f:
         f.write(text + "\n")
 
 
@@ -295,7 +333,7 @@ def checkDownloadStatus(
         return False, True
 
     # Scenarios: 3
-    if should_check_local_files:
+    if SHOULD_CHECK_LOCAL_FILES:
         downloaded_file_index = binarySearch(
             transformData([_name]), downloaded_file_list
         )
@@ -330,65 +368,20 @@ def downloadFile(driver, web_driver_wait, xpath, files_count):
     return files_count + 1  # Keeping track of the downloaded files
 
 
-def loadMoreFiles(driver, files_to_load, identifier, timeout=timeout, n_scroll=1):
-    """
-    Scroll down to load more files
-    -> do this operation(scroll to load) for n times
-
-    """
-    for _ in range(n_scroll):
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-
-        time_elapsed = 0
-        current_len = len(files_to_load[0])
-
-        """
-        1. If the first one is loaded then all others will surely get loaded so you don't have to check the whole length of 'files_to_load' array but
-           if you want you can do something like this ->
-            
-           current_len = sum(len(i) for i in files_to_load)
-
-        
-        2. Wait 'timeout=30 minutes' before determining that there is no more files to load
-
-        3. Computation here gets much more expensive as more and more data loads so it is not viable to do this check every second hence 5s interval
-        
-        """
-        while time_elapsed <= timeout:
-            start_time = time.time()
-            waitNSeconds(5)
-
-            # By doing this we don't need to check if every single data is loaded or not everytime hence saving computational power
-            first_data = driver.find_elements(By.XPATH, identifier[0])
-
-            if current_len < len(first_data):
-                files_to_load[0].extend(
-                    [
-                        element
-                        for element in first_data
-                        if element not in files_to_load[0]
-                    ]
-                )
-
-                for idx in range(1, len(files_to_load)):
-                    files_to_load[idx].extend(
-                        [
-                            element
-                            for element in driver.find_elements(
-                                By.XPATH, identifier[idx]
-                            )
-                            if element not in files_to_load[idx]
-                        ]
-                    )
-
-                break
-
-            time_elapsed += time.time() - start_time
+def insertFoundFiles(driver, files_to_load, identifier):
+    for idx in range(len(files_to_load)):
+        files_to_load[idx].extend(
+            [
+                element
+                for element in driver.find_elements(By.XPATH, identifier[idx])
+                if element not in files_to_load[idx]
+            ]
+        )
 
     return files_to_load
 
 
-def waitToFinishDownload(directory, nfiles=None, timeout=timeout):
+def waitToFinishDownload(directory, nfiles=None, timeout=TIMEOUT):
     """
     Args
     ----
@@ -417,7 +410,7 @@ def waitToFinishDownload(directory, nfiles=None, timeout=timeout):
         # Checking for any partially donwloaded file
         if not dl_wait:
             for fname in files:
-                if fname.endswith(partially_downloaded_file_ext):
+                if fname.endswith(PARTIALLY_DOWNLOADED_FILE_EXT):
                     dl_wait = True
                     break
 
@@ -430,7 +423,9 @@ def waitToFinishDownload(directory, nfiles=None, timeout=timeout):
         )
     else:
         updateLog(
-            "\nSuccessfully downloaded. Continuing after {}s... 🥳".format(time_elapsed)
+            "\nSuccessfully downloaded. Continuing after {}s... 🥳".format(
+                round(time_elapsed, 2)
+            )
         )
 
     return time_elapsed
