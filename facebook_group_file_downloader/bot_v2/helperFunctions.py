@@ -169,13 +169,16 @@ def getExistingFilesInfo():
                 """
                 Normalizing here because the data is now coming from a UTF-8 encoded file
 
+                Note
+                ----
+                Only combining post_id and name because you can only attach one pdf file with a post
+
                 """
                 registered_file_list.append(
                     transformData(
                         [
                             info["post_id"],
                             normalizeData(info["name"]),
-                            normalizeData(info["uploaded_date"]),
                         ]
                     )
                 )
@@ -272,9 +275,7 @@ def binarySearch(match_item, itemList):
     return -1
 
 
-def checkDownloadStatus(
-    _post_id, _name, _date, downloaded_file_list, registered_file_list
-):
+def checkDownloadStatus(_post_id, _name, downloaded_file_list, registered_file_list):
     """
     Check If the requested file has already been downloaded or not
 
@@ -319,11 +320,13 @@ def checkDownloadStatus(
     """
 
     # Scenarios: 1
-    if not registered_file_list or not downloaded_file_list:
+    if not registered_file_list or (
+        not downloaded_file_list and SHOULD_CHECK_LOCAL_FILES
+    ):
         return False, True
 
     registered_file_index = binarySearch(
-        transformData([_post_id, _name, _date]),
+        transformData([_post_id, _name]),
         registered_file_list,
     )
 

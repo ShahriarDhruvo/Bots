@@ -5,17 +5,16 @@ EXPLICIT_WAIT_TIME = 10
 TARGET_FILE_TYPE = "pdf"
 LOG_FILE_NAME = "bot.log"
 NORMALIZATION_FORM = "NFC"
-TRACKER_FILE_NAME = "registered_files2.json"
-DOWNLOAD_DIRECTORY = "D:\\Download\\Bangla-Books-Direct-Link\\"
-FACEBOOK_GROUP_URL = "https://www.facebook.com/groups/blbookdl"
-# FACEBOOK_GROUP_URL = "https://www.facebook.com/groups/201623576939858/files/"
+TRACKER_FILE_NAME = "registered_files.json"
+DOWNLOAD_DIRECTORY = "D:\\Download\\Molat-PDF-Files\\"
+FACEBOOK_GROUP_URL = "https://www.facebook.com/groups/201623576939858"
 
 
 # Turn it off if you find it is causing duplicate files
 SHOULD_CHECK_LOCAL_FILES = False
 
 # This file keeps track of every downloaded file
-TRACKER_FILE_LOCATION = "./" + TRACKER_FILE_NAME
+TRACKER_FILE_LOCATION = DOWNLOAD_DIRECTORY + TRACKER_FILE_NAME
 LOG_FILE_LOCATION = "./" + LOG_FILE_NAME
 
 # For chromium based browsers this is '.crdownload'
@@ -38,7 +37,7 @@ WARNING
 name_xpath, type_date_xpath -> this identifiers will change continuously so update it according to your needs 
 
 """
-OPTION_BUTTON_XPATH = "//div[@aria-label='File Options']"
+OPTION_BUTTON_XPATH = "//div[@aria-label='File options']"
 DOWNLOAD_BUTTON_XPATH = "//a[contains(@href, 'https://www.facebook.com/download/')]"
 POST_PERMALINK_XPATH = "//a[contains(@href, '" + FACEBOOK_GROUP_URL + "/permalink/')]"
 
@@ -54,11 +53,11 @@ bot.log                  This will keep you updated on what's going on with this
 registered_files.json    Keeps the track of downloaded files so that they don't get downloaded again if you start from the begining again!
 
 """
-with open("bot.log", "a+") as f:
+with open(LOG_FILE_LOCATION, "a+") as f:
     f.close()
 with open(".secret", "a+") as f:
     f.close()
-with open("registered_files2.json", "a+") as f:
+with open(TRACKER_FILE_LOCATION, "a+") as f:
     f.close()
 
 
