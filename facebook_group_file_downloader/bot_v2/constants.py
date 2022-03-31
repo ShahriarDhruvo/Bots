@@ -11,7 +11,7 @@ FACEBOOK_GROUP_URL = "https://www.facebook.com/groups/201623576939858"
 
 
 # Turn it off if you find it is causing duplicate files
-SHOULD_CHECK_LOCAL_FILES = False
+SHOULD_CHECK_LOCAL_FILES = True
 
 # This file keeps track of every downloaded file
 TRACKER_FILE_LOCATION = DOWNLOAD_DIRECTORY + TRACKER_FILE_NAME

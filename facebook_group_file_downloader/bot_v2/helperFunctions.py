@@ -177,8 +177,9 @@ def getExistingFilesInfo():
                 registered_file_list.append(
                     transformData(
                         [
-                            info["post_id"],
+                            # info["post_id"],
                             normalizeData(info["name"]),
+                            normalizeData(info["uploaded_date"]),
                         ]
                     )
                 )
@@ -275,7 +276,9 @@ def binarySearch(match_item, itemList):
     return -1
 
 
-def checkDownloadStatus(_post_id, _name, downloaded_file_list, registered_file_list):
+def checkDownloadStatus(
+    _post_id, _name, _date, downloaded_file_list, registered_file_list
+):
     """
     Check If the requested file has already been downloaded or not
 
@@ -325,8 +328,12 @@ def checkDownloadStatus(_post_id, _name, downloaded_file_list, registered_file_l
     ):
         return False, True
 
+    # registered_file_index = binarySearch(
+    #     transformData([_post_id, _name, _date]),
+    #     registered_file_list,
+    # )
     registered_file_index = binarySearch(
-        transformData([_post_id, _name]),
+        transformData([_name, _date]),
         registered_file_list,
     )
 
